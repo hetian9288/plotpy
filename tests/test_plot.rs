@@ -4,6 +4,8 @@ use std::f64::consts::PI;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
+use std::thread;
+use std::time::Duration;
 
 const OUT_DIR: &str = "/tmp/plotpy/integ_tests";
 
@@ -55,7 +57,10 @@ fn test_plot() -> Result<(), StrError> {
     // save figure
     let path = Path::new(OUT_DIR).join("integ_plot.svg");
     plot.set_figure_size_points(250.0, 250.0 * 0.75);
-    plot.save(&path)?;
+    plot.save_and_show(&path, |send| {
+        thread::sleep(Duration::from_secs(30));
+        let _ = send.send(true);
+    })?;
 
     // check number of lines
     let file = File::open(path).map_err(|_| "cannot open file")?;
@@ -153,7 +158,11 @@ fn test_plot_log() -> Result<(), StrError> {
 
     // save figure
     let path = Path::new(OUT_DIR).join("integ_plot_log.svg");
-    plot.save(&path)?;
+    // plot.save(&path)?;
+    plot.save_and_show(&path, |send| {
+        thread::sleep(Duration::from_secs(30));
+        let _ = send.send(true);
+    })?;
 
     // check number of lines
     let file = File::open(path).map_err(|_| "cannot open file")?;

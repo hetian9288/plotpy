@@ -1,9 +1,10 @@
-use super::{call_python3, Legend, StrError};
+use super::{call_python3, call_python3_signal, Legend, StrError};
 use std::ffi::OsStr;
 use std::fmt::Write;
 use std::fs::File;
 use std::io::Write as IoWrite;
 use std::path::Path;
+use std::sync::mpsc;
 
 /// Defines the trait used by Plot to add graph entities
 pub trait GraphMaker {
@@ -117,7 +118,7 @@ impl Plot {
     where
         S: AsRef<OsStr> + ?Sized,
     {
-        self.run(figure_path, false)
+        self.run(figure_path, false, |_| {})
     }
 
     /// Calls python3, saves the python script and figure, and show the plot window
@@ -129,11 +130,12 @@ impl Plot {
     /// # Note
     ///
     /// Call `set_show_errors` to configure how the errors (if any) are printed.
-    pub fn save_and_show<S>(&self, figure_path: &S) -> Result<(), StrError>
+    pub fn save_and_show<S, F>(&self, figure_path: &S, call_signal: F) -> Result<(), StrError>
     where
         S: AsRef<OsStr> + ?Sized,
+        F: FnOnce(mpsc::Sender<bool>) + Send + 'static,
     {
-        self.run(figure_path, true)
+        self.run(figure_path, true, call_signal)
     }
 
     /// Clears current figure
@@ -618,9 +620,10 @@ impl Plot {
     }
 
     /// Run python
-    fn run<S>(&self, figure_path: &S, show: bool) -> Result<(), StrError>
+    fn run<S, F>(&self, figure_path: &S, show: bool, call_signal: F) -> Result<(), StrError>
     where
         S: AsRef<OsStr> + ?Sized,
+        F: FnOnce(mpsc::Sender<bool>) + Send + 'static,
     {
         // update commands
         let fig_path = Path::new(figure_path);
@@ -634,7 +637,11 @@ impl Plot {
         // call python
         let mut path = Path::new(figure_path).to_path_buf();
         path.set_extension("py");
-        let output = call_python3(&commands, &path)?;
+        let output = if show {
+            call_python3_signal(&commands, &path, call_signal)?
+        } else {
+            call_python3(&commands, &path)?
+        };
 
         // handle error => write log file
         if output != "" {
